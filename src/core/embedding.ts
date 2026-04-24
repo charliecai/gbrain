@@ -9,8 +9,8 @@
 
 import OpenAI from 'openai';
 
-const MODEL = 'text-embedding-3-large';
-const DIMENSIONS = 1536;
+const DEFAULT_MODEL = 'text-embedding-3-large';
+const DEFAULT_DIMENSIONS = 1536;
 const MAX_CHARS = 8000;
 const MAX_RETRIES = 5;
 const BASE_DELAY_MS = 4000;
@@ -18,10 +18,39 @@ const MAX_DELAY_MS = 120000;
 const BATCH_SIZE = 100;
 
 let client: OpenAI | null = null;
+let clientKey: string | null = null;
+
+export interface EmbeddingConfig {
+  model: string;
+  dimensions: number;
+  apiKey?: string;
+  baseURL?: string;
+}
+
+export function embeddingConfigFromEnv(env: NodeJS.ProcessEnv = process.env): EmbeddingConfig {
+  const rawDimensions = env.GBRAIN_EMBEDDING_DIMENSIONS || env.GBRAIN_EMBED_DIMENSIONS;
+  const parsedDimensions = rawDimensions ? Number.parseInt(rawDimensions, 10) : DEFAULT_DIMENSIONS;
+  const dimensions = Number.isFinite(parsedDimensions) && parsedDimensions > 0
+    ? parsedDimensions
+    : DEFAULT_DIMENSIONS;
+
+  return {
+    model: env.GBRAIN_EMBEDDING_MODEL || env.GBRAIN_EMBED_MODEL || DEFAULT_MODEL,
+    dimensions,
+    apiKey: env.GBRAIN_EMBEDDING_API_KEY || env.GBRAIN_EMBED_API_KEY || env.SILICONFLOW_API_KEY || env.OPENAI_API_KEY,
+    baseURL: env.GBRAIN_EMBEDDING_BASE_URL || env.GBRAIN_EMBED_BASE_URL || env.OPENAI_BASE_URL,
+  };
+}
 
 function getClient(): OpenAI {
-  if (!client) {
-    client = new OpenAI();
+  const config = embeddingConfigFromEnv();
+  const key = `${config.apiKey ?? ''}\n${config.baseURL ?? ''}`;
+  if (!client || clientKey !== key) {
+    client = new OpenAI({
+      ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+      ...(config.baseURL ? { baseURL: config.baseURL } : {}),
+    });
+    clientKey = key;
   }
   return client;
 }
@@ -62,10 +91,11 @@ export async function embedBatch(
 async function embedBatchWithRetry(texts: string[]): Promise<Float32Array[]> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
+      const config = embeddingConfigFromEnv();
       const response = await getClient().embeddings.create({
-        model: MODEL,
+        model: config.model,
         input: texts,
-        dimensions: DIMENSIONS,
+        dimensions: config.dimensions,
       });
 
       // Sort by index to maintain order
@@ -104,4 +134,5 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export { MODEL as EMBEDDING_MODEL, DIMENSIONS as EMBEDDING_DIMENSIONS };
+export const EMBEDDING_MODEL = embeddingConfigFromEnv().model;
+export const EMBEDDING_DIMENSIONS = embeddingConfigFromEnv().dimensions;
