@@ -6,8 +6,9 @@
  * For files >25MB: ffmpeg segmentation into <25MB chunks, transcribe each, concatenate.
  */
 
-import { statSync, readFileSync } from 'fs';
-import { basename, extname } from 'path';
+import { statSync, readFileSync, existsSync } from 'fs';
+import { basename, extname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,11 +30,13 @@ export interface TranscriptionResult {
 }
 
 export interface TranscriptionConfig {
-  provider?: 'groq' | 'openai' | 'deepgram';
+  provider?: 'groq' | 'openai' | 'deepgram' | 'sensevoice' | 'local';
   apiKey?: string;
   model?: string;
   language?: string;
   diarize?: boolean;
+  /** argv command for provider='local'. Use '{input}' as the media path placeholder. */
+  localCommand?: string[];
 }
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
@@ -60,6 +63,14 @@ export async function transcribe(
   const ext = extname(audioPath).toLowerCase();
   if (!AUDIO_EXTENSIONS.has(ext)) {
     throw new Error(`Unsupported audio format: ${ext}. Supported: ${[...AUDIO_EXTENSIONS].join(', ')}`);
+  }
+
+  if (config.provider === 'local') {
+    return transcribeLocalCommand(audioPath, config.localCommand || parseCommandJsonEnv('GBRAIN_TRANSCRIPTION_COMMAND_JSON'), config, 'local');
+  }
+
+  if (config.provider === 'sensevoice') {
+    return transcribeSenseVoice(audioPath, config);
   }
 
   // Determine provider and API key
@@ -234,4 +245,180 @@ async function checkFfmpeg(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// Local transcription providers + Markdown rendering
+// ---------------------------------------------------------------------------
+
+function extractJsonPayload(output: string): string {
+  const trimmed = output.trim();
+  if (trimmed.startsWith('{')) return trimmed;
+  const lastBrace = trimmed.lastIndexOf('\n{');
+  if (lastBrace >= 0) return trimmed.slice(lastBrace + 1).trim();
+  return trimmed;
+}
+
+export function parseLocalTranscriptionOutput(output: string, provider: string): TranscriptionResult {
+  const trimmed = output.trim();
+  if (!trimmed) {
+    throw new Error(`${provider} transcription command produced no output`);
+  }
+
+  try {
+    const jsonText = extractJsonPayload(trimmed);
+    const data = JSON.parse(jsonText) as any;
+    const segments = Array.isArray(data.segments)
+      ? data.segments.map((s: any) => ({
+          start: Number(s.start ?? 0),
+          end: Number(s.end ?? s.start ?? 0),
+          text: String(s.text ?? '').trim(),
+          ...(s.speaker ? { speaker: String(s.speaker) } : {}),
+        })).filter((s: TranscriptionSegment) => s.text)
+      : [];
+    const text = String(data.text ?? segments.map((s: TranscriptionSegment) => s.text).join('\n')).trim();
+    return {
+      text,
+      segments,
+      language: String(data.language ?? 'unknown'),
+      duration: Number(data.duration ?? segments.at(-1)?.end ?? 0),
+      provider,
+    };
+  } catch {
+    return {
+      text: trimmed,
+      segments: [{ start: 0, end: 0, text: trimmed }],
+      language: 'unknown',
+      duration: 0,
+      provider,
+    };
+  }
+}
+
+async function transcribeLocalCommand(
+  audioPath: string,
+  command: string[] | undefined,
+  config: TranscriptionConfig,
+  provider: 'local' | 'sensevoice',
+): Promise<TranscriptionResult> {
+  if (!command || command.length === 0) {
+    const envName = provider === 'local' ? 'GBRAIN_TRANSCRIPTION_COMMAND_JSON' : 'GBRAIN_SENSEVOICE_COMMAND_JSON';
+    throw new Error(
+      `No local transcription command configured. Pass localCommand or set ${envName} ` +
+      `to a JSON argv array such as ["python3","script.py","{input}"].`
+    );
+  }
+
+  const input = resolve(audioPath);
+  const argv = command.map(part => part
+    .replace(/\{input\}/g, input)
+    .replace(/\{language\}/g, config.language || 'auto')
+    .replace(/\{model\}/g, config.model || ''));
+  const [cmd, ...args] = argv;
+  const { execFile } = await import('child_process');
+  const output = await new Promise<string>((resolvePromise, reject) => {
+    execFile(cmd, args, { encoding: 'utf8', maxBuffer: 100 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(
+          `${provider} transcription command failed: ${error.message}` +
+          (stderr ? `\n${stderr.slice(0, 4000)}` : '')
+        ));
+        return;
+      }
+      resolvePromise(stdout);
+    });
+  });
+
+  return parseLocalTranscriptionOutput(output, provider);
+}
+
+function parseCommandJsonEnv(name: string): string[] | undefined {
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every(v => typeof v === 'string')) return parsed;
+  } catch {}
+  throw new Error(`${name} must be a JSON array of strings, for example ["python3","script.py","{input}"].`);
+}
+
+function defaultSenseVoiceCommand(): string[] {
+  const here = fileURLToPath(new URL('.', import.meta.url));
+  const script = resolve(here, '../../scripts/sensevoice-transcribe.py');
+  const bundledPython = resolve(process.env.HOME || '', '.hermes/hermes-agent/venv/bin/python');
+  const python = process.env.GBRAIN_TRANSCRIPTION_PYTHON
+    || (existsSync(bundledPython) ? bundledPython : 'python3');
+  return [python, script, '{input}', '--language', '{language}'];
+}
+
+async function transcribeSenseVoice(audioPath: string, config: TranscriptionConfig): Promise<TranscriptionResult> {
+  const command = config.localCommand
+    || parseCommandJsonEnv('GBRAIN_SENSEVOICE_COMMAND_JSON')
+    || defaultSenseVoiceCommand();
+  return transcribeLocalCommand(audioPath, command, config, 'sensevoice');
+}
+
+export function formatTimestamp(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function yamlScalar(value: string): string {
+  if (/[#\n\[\]{}]|:\s|^\s|\s$/.test(value)) return JSON.stringify(value);
+  return value;
+}
+
+export function renderTranscriptMarkdown(opts: {
+  title: string;
+  source?: string;
+  mediaPath: string;
+  tags?: string[];
+  result: TranscriptionResult;
+}): string {
+  const tags = opts.tags?.length ? opts.tags.join(', ') : 'transcript, audio, video';
+  const lines: string[] = [
+    '---',
+    `title: ${yamlScalar(opts.title)}`,
+    `tags: ${tags}`,
+  ];
+  if (opts.source) lines.push(`source: ${yamlScalar(opts.source)}`);
+  lines.push(
+    `media: ${yamlScalar(opts.mediaPath)}`,
+    `provider: ${opts.result.provider}`,
+    `language: ${opts.result.language}`,
+    `duration_seconds: ${Math.round(opts.result.duration)}`,
+    '---',
+    '',
+    `# ${opts.title}`,
+    '',
+    '## 转写信息',
+    '',
+    `- 媒体文件：\`${opts.mediaPath}\``,
+    `- 转写引擎：${opts.result.provider}`,
+    `- 语言：${opts.result.language}`,
+    `- 时长：${formatTimestamp(opts.result.duration)}`,
+    '',
+    '## 带时间戳转写',
+    '',
+  );
+
+  if (opts.result.segments.length === 0) {
+    lines.push(opts.result.text, '');
+  } else {
+    for (const segment of opts.result.segments) {
+      lines.push(
+        `### ${formatTimestamp(segment.start)} - ${formatTimestamp(segment.end)}`,
+        '',
+        segment.text,
+        '',
+      );
+    }
+  }
+
+  lines.push('## 完整转写', '', opts.result.text, '');
+  return lines.join('\n');
 }

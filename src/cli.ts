@@ -19,7 +19,7 @@ for (const op of operations) {
 }
 
 // CLI-only commands that bypass the operation layer
-const CLI_ONLY = new Set(['init', 'upgrade', 'post-upgrade', 'check-update', 'integrations', 'publish', 'check-backlinks', 'lint', 'report', 'import', 'export', 'files', 'embed', 'serve', 'call', 'config', 'doctor', 'migrate', 'eval', 'sync', 'extract', 'features', 'autopilot', 'graph-query', 'jobs', 'agent', 'apply-migrations', 'skillpack-check', 'skillpack', 'resolvers', 'integrity', 'repair-jsonb', 'orphans', 'sources', 'dream', 'check-resolvable', 'routing-eval', 'skillify', 'smoke-test']);
+const CLI_ONLY = new Set(['init', 'upgrade', 'post-upgrade', 'check-update', 'integrations', 'publish', 'check-backlinks', 'lint', 'report', 'import', 'export', 'files', 'embed', 'transcribe', 'serve', 'call', 'config', 'doctor', 'migrate', 'eval', 'sync', 'extract', 'features', 'autopilot', 'graph-query', 'jobs', 'agent', 'apply-migrations', 'skillpack-check', 'skillpack', 'resolvers', 'integrity', 'repair-jsonb', 'orphans', 'sources', 'dream', 'check-resolvable', 'routing-eval', 'skillify', 'smoke-test']);
 
 async function main() {
   // Parse global flags (--quiet / --progress-json / --progress-interval)
@@ -416,6 +416,21 @@ async function handleCliOnly(command: string, args: string[]) {
     return;
   }
 
+  if (command === 'transcribe') {
+    const { runTranscribe } = await import('./commands/transcribe.ts');
+    if (args.includes('--import') || args.includes('--embed')) {
+      const eng = await connectEngine();
+      try {
+        await runTranscribe(eng, args);
+      } finally {
+        await eng.disconnect();
+      }
+    } else {
+      await runTranscribe(null, args);
+    }
+    return;
+  }
+
   // All remaining CLI-only commands need a DB connection
   const engine = await connectEngine();
   try {
@@ -438,6 +453,11 @@ async function handleCliOnly(command: string, args: string[]) {
       case 'embed': {
         const { runEmbed } = await import('./commands/embed.ts');
         await runEmbed(engine, args);
+        break;
+      }
+      case 'transcribe': {
+        const { runTranscribe } = await import('./commands/transcribe.ts');
+        await runTranscribe(engine, args);
         break;
       }
       case 'serve': {
@@ -592,6 +612,7 @@ FILES
 
 EMBEDDINGS
   embed [<slug>|--all|--stale]       Generate/refresh embeddings
+  transcribe <media> [--out file.md]  Transcribe audio/video to searchable Markdown
 
 LINKS
   link <from> <to> [--type T]        Create typed link
