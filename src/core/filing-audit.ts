@@ -1,5 +1,5 @@
 /**
- * filing-audit.ts — Check 6 of the skillify checklist (W3, v0.17).
+ * filing-audit.ts — Check 6 of the skillify checklist (W3).
  *
  * For every skill that writes brain pages (`writes_pages: true`),
  * verify that:
@@ -8,22 +8,23 @@
  *      `skills/_brain-filing-rules.json`. `sources/` is explicitly
  *      allowed (bulk data capture is a legitimate filing target).
  *
- * Important distinction (D-CX-7): `writes_pages: true` is distinct
- * from the pre-existing `mutating: true` field. `mutating:true` means
- * "has side effects" (any side effect — cron, config, report write).
+ * Important distinction: `writes_pages: true` is distinct from the
+ * pre-existing `mutating: true` field. `mutating:true` means "has
+ * side effects" (any side effect — cron, config, report write).
  * `writes_pages:true` means "writes brain pages to a semantic
  * directory." Cron/config/report-writer skills set `mutating:true`
  * but NOT `writes_pages:true`, and so are correctly exempted from
  * filing-audit noise.
  *
- * v0.17 scope: declaration-level audit only (cheap, deterministic).
- * v0.18 plan: `filing-audit --pages` walks brain pages and infers
- * primary subject via LLM to catch real misfilings vs declarations
- * (D-CX-13).
+ * Current scope: declaration-level audit only (cheap, deterministic).
+ * A future release may add `filing-audit --pages` to walk brain pages
+ * and infer primary subject via LLM (catches real misfilings vs
+ * declarations); that is tracked as follow-up work, not in this scope.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+import { parseSkillFrontmatter } from './skill-frontmatter.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -112,6 +113,19 @@ function normalizeDir(dir: string): string {
 // Skill frontmatter parsing (minimal, tolerant)
 // ---------------------------------------------------------------------------
 
+/**
+ * Public surface preserved for back-compat: SkillFrontmatter remains a
+ * narrow alias here, but the underlying parser now lives in
+ * `skill-frontmatter.ts` (`parseSkillFrontmatter`). The wider
+ * `ParsedFrontmatter` type from that module is structurally compatible
+ * with this narrower one — every field on SkillFrontmatter is optional
+ * and present on ParsedFrontmatter.
+ *
+ * If you're writing new code, import `parseSkillFrontmatter` and
+ * `ParsedFrontmatter` from `./skill-frontmatter.ts` directly. This
+ * thin wrapper exists so existing filing-audit callers don't need to
+ * be touched.
+ */
 export interface SkillFrontmatter {
   name?: string;
   writes_pages?: boolean;
@@ -127,41 +141,18 @@ function parseFrontmatter(skillMdPath: string): SkillFrontmatter | null {
   } catch {
     return null;
   }
-  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) return null;
-  const raw = fmMatch[1];
-  const out: SkillFrontmatter = { raw };
-
-  const nameMatch = raw.match(/^name:\s*["']?([^"'\n]+?)["']?\s*$/m);
-  if (nameMatch) out.name = nameMatch[1].trim();
-
-  const wpMatch = raw.match(/^writes_pages:\s*(true|false)\s*$/m);
-  if (wpMatch) out.writes_pages = wpMatch[1] === 'true';
-
-  const mutMatch = raw.match(/^mutating:\s*(true|false)\s*$/m);
-  if (mutMatch) out.mutating = mutMatch[1] === 'true';
-
-  // writes_to: supports inline `[a, b, c]` OR multi-line block list
-  //   writes_to:
-  //     - people/
-  //     - companies/
-  // AND inline `writes_to: [people/, companies/]`
-  const inlineWtMatch = raw.match(/^writes_to:\s*\[([^\]]*)\]\s*$/m);
-  if (inlineWtMatch) {
-    out.writes_to = inlineWtMatch[1]
-      .split(',')
-      .map(s => s.trim().replace(/^["']|["']$/g, ''))
-      .filter(Boolean);
-  } else {
-    const blockMatch = raw.match(/^writes_to:\s*\n((?:\s+-\s+[^\n]+\n?)+)/m);
-    if (blockMatch) {
-      out.writes_to = blockMatch[1]
-        .split('\n')
-        .map(l => l.replace(/^\s+-\s+/, '').replace(/^["']|["']$/g, '').trim())
-        .filter(Boolean);
-    }
-  }
-  return out;
+  const parsed = parseSkillFrontmatter(content);
+  if (!parsed) return null;
+  // Project the wider ParsedFrontmatter onto the narrower SkillFrontmatter
+  // shape filing-audit callers expect. Field order matches the original
+  // shape so tests that compare object keys via JSON.stringify stay stable.
+  return {
+    raw: parsed.raw,
+    name: parsed.name,
+    writes_pages: parsed.writes_pages,
+    writes_to: parsed.writes_to,
+    mutating: parsed.mutating,
+  };
 }
 
 // ---------------------------------------------------------------------------

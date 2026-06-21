@@ -19,6 +19,10 @@ export interface TranscribeCliOptions {
 }
 
 export function parseTranscribeArgs(args: string[]): TranscribeCliOptions {
+  if (args.includes('--help') || args.includes('-h')) {
+    throw new Error(helpText());
+  }
+
   const input = args.find(a => !a.startsWith('-'));
   if (!input) {
     throw new Error('Usage: gbrain transcribe <audio-or-video> [--provider sensevoice|local|groq|openai] [--out transcript.md]');
@@ -69,9 +73,6 @@ export function parseTranscribeArgs(args: string[]): TranscribeCliOptions {
         opts.embed = true;
         opts.import = true;
         break;
-      case '--help':
-      case '-h':
-        throw new Error(helpText());
       default:
         if (arg.startsWith('-')) throw new Error(`Unknown option: ${arg}`);
     }

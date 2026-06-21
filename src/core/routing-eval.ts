@@ -15,8 +15,9 @@
  *     of skills this intent is allowed to also match).
  *
  *   Layer B (LLM tie-break, optional): only runs via `gbrain routing-eval
- *     --llm`. Not yet implemented in v0.17 core; the CLI stubs the flag
- *     so call sites are ready.
+ *     --llm`. Not yet implemented in this release; the CLI accepts the
+ *     flag (emits a stderr notice and runs Layer A only) so call sites
+ *     are ready. A future release will wire up the tie-break layer.
  *
  * Fixture linter (D-CX-6): we reject fixtures where the normalized
  * `intent` is a verbatim substring of any trigger phrase attached to
@@ -95,6 +96,7 @@ export interface RoutingCaseResult {
  * variants that agents emit in practice.
  */
 export function normalizeText(s: string): string {
+  if (!s) return '';
   return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
@@ -297,6 +299,10 @@ export function loadRoutingFixtures(skillsDir: string): LoadResult {
       if (raw.startsWith('//') || raw.startsWith('#')) continue;
       try {
         const obj = JSON.parse(raw) as RoutingFixture;
+        if (typeof obj.intent !== 'string') {
+          malformed.push({ file: fixturePath, line: i + 1, raw, error: `missing required field 'intent' (found keys: ${Object.keys(obj).join(', ')})` });
+          continue;
+        }
         fixtures.push({ ...obj, source: fixturePath });
       } catch (err) {
         malformed.push({
@@ -316,7 +322,7 @@ export function loadRoutingFixtures(skillsDir: string): LoadResult {
 // ---------------------------------------------------------------------------
 
 export interface RunRoutingEvalOptions {
-  /** Reserved for Layer B (LLM tie-break). Not implemented in v0.17. */
+  /** Reserved for Layer B (LLM tie-break). Not implemented in this release. */
   llm?: boolean;
 }
 

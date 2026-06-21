@@ -1,14 +1,10 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-
-mock.module('../src/core/embedding.ts', () => ({
-  embed: async (_text: string) => new Float32Array([1, 0, 0]),
-  embeddingConfigFromEnv: (env: NodeJS.ProcessEnv = process.env) => ({
-    model: 'test-model',
-    dimensions: 3,
-    apiKey: env.GBRAIN_EMBEDDING_API_KEY || env.GBRAIN_EMBED_API_KEY || env.SILICONFLOW_API_KEY || env.OPENAI_API_KEY,
-    baseURL: env.GBRAIN_EMBEDDING_BASE_URL || env.GBRAIN_EMBED_BASE_URL || env.OPENAI_BASE_URL,
-  }),
-}));
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import {
+  __setEmbedTransportForTests,
+  configureGateway,
+  resetGateway,
+} from '../src/core/ai/gateway.ts';
+import { buildGatewayConfig } from '../src/core/ai/build-gateway-config.ts';
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -67,18 +63,32 @@ function makeEngine() {
 
 describe('hybridSearch embedding provider gate', () => {
   beforeEach(() => {
+    resetGateway();
+    __setEmbedTransportForTests(async ({ values }: any) => ({
+      embeddings: values.map(() => new Array(1536).fill(0)),
+      usage: { tokens: 0 },
+    }) as any);
     delete process.env.OPENAI_API_KEY;
     delete process.env.GBRAIN_EMBEDDING_API_KEY;
     delete process.env.GBRAIN_EMBED_API_KEY;
     delete process.env.SILICONFLOW_API_KEY;
+    delete process.env.GBRAIN_EMBEDDING_MODEL;
+    delete process.env.GBRAIN_EMBED_MODEL;
+    delete process.env.GBRAIN_EMBEDDING_DIMENSIONS;
+    delete process.env.GBRAIN_EMBED_DIMENSIONS;
+    delete process.env.GBRAIN_EMBEDDING_BASE_URL;
+    delete process.env.GBRAIN_EMBED_BASE_URL;
   });
 
   afterEach(() => {
+    __setEmbedTransportForTests(null);
+    resetGateway();
     restoreEnv();
   });
 
   test('runs vector search when only SILICONFLOW_API_KEY is configured', async () => {
     process.env.SILICONFLOW_API_KEY = '1';
+    configureGateway(buildGatewayConfig({ engine: 'pglite' } as any));
 
     const { hybridSearch } = await import('../src/core/search/hybrid.ts');
     const { engine, calls } = makeEngine();
@@ -91,6 +101,7 @@ describe('hybridSearch embedding provider gate', () => {
 
   test('runs vector search when only GBRAIN_EMBEDDING_API_KEY is configured', async () => {
     process.env.GBRAIN_EMBEDDING_API_KEY = '1';
+    configureGateway(buildGatewayConfig({ engine: 'pglite' } as any));
 
     const { hybridSearch } = await import('../src/core/search/hybrid.ts');
     const { engine, calls } = makeEngine();

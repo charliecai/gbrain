@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { configureGateway, resetGateway } from '../src/core/ai/gateway.ts';
+import { buildGatewayConfig } from '../src/core/ai/build-gateway-config.ts';
 
 const importCalls: Array<{ slug: string; content: string; noEmbed?: boolean }> = [];
 
@@ -43,19 +45,28 @@ function makeContext() {
 
 describe('put_page embedding provider gate', () => {
   beforeEach(() => {
+    resetGateway();
     importCalls.length = 0;
     delete process.env.OPENAI_API_KEY;
     delete process.env.GBRAIN_EMBEDDING_API_KEY;
     delete process.env.GBRAIN_EMBED_API_KEY;
     delete process.env.SILICONFLOW_API_KEY;
+    delete process.env.GBRAIN_EMBEDDING_MODEL;
+    delete process.env.GBRAIN_EMBED_MODEL;
+    delete process.env.GBRAIN_EMBEDDING_DIMENSIONS;
+    delete process.env.GBRAIN_EMBED_DIMENSIONS;
+    delete process.env.GBRAIN_EMBEDDING_BASE_URL;
+    delete process.env.GBRAIN_EMBED_BASE_URL;
   });
 
   afterEach(() => {
+    resetGateway();
     restoreEnv();
   });
 
   test('does not skip embedding when only GBRAIN_EMBEDDING_API_KEY is configured', async () => {
     process.env.GBRAIN_EMBEDDING_API_KEY = '1';
+    configureGateway(buildGatewayConfig({ engine: 'pglite' } as any));
 
     const { operationsByName } = await import('../src/core/operations.ts');
     const putOp = operationsByName['put_page'];

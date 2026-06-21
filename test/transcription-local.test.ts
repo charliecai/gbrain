@@ -100,4 +100,8 @@ describe('local transcription support', () => {
     expect(opts.import).toBe(true);
     expect(opts.embed).toBe(true);
   });
+
+  test('CLI parser prints detailed help without requiring an input file', () => {
+    expect(() => parseTranscribeArgs(['--help'])).toThrow(/--command-json/);
+  });
 });
