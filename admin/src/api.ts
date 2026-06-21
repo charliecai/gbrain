@@ -33,6 +33,14 @@ async function apiFetchText(path: string) {
   return res.text();
 }
 
+function qs(params: Record<string, string | number | undefined>) {
+  const out = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') out.set(key, String(value));
+  }
+  return out.toString();
+}
+
 export const api = {
   login: (token: string) => apiFetch('/admin/login', { method: 'POST', body: JSON.stringify({ token }) }),
   signOutEverywhere: () => apiFetch('/admin/api/sign-out-everywhere', { method: 'POST' }),
@@ -52,4 +60,10 @@ export const api = {
     apiFetchText(`/admin/api/calibration/charts/${encodeURIComponent(type)}${holder ? `?holder=${encodeURIComponent(holder)}` : ''}`),
   // v0.41 D2 — live minion-jobs dashboard snapshot.
   jobsWatch: () => apiFetch('/admin/api/jobs/watch'),
+  brainQuery: (body: { mode: 'search' | 'think'; query: string; limit: number }) =>
+    apiFetch('/admin/api/brain/query', { method: 'POST', body: JSON.stringify(body) }),
+  fileRoots: () => apiFetch('/admin/api/files/roots'),
+  fileList: (root: string, path: string) => apiFetch(`/admin/api/files/list?${qs({ root, path })}`),
+  filePreview: (root: string, path: string) => apiFetch(`/admin/api/files/preview?${qs({ root, path })}`),
+  fileDownloadUrl: (root: string, path: string) => `/admin/api/files/download?${qs({ root, path })}`,
 };

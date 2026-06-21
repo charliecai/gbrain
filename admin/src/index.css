@@ -168,6 +168,22 @@ input:focus, select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
 }
+textarea {
+  background: var(--bg-primary);
+  border: 1px solid #333;
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  width: 100%;
+  resize: vertical;
+}
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+}
 input::placeholder { color: var(--text-muted); }
 label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
 
@@ -313,6 +329,114 @@ label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
   margin: 12px 0;
 }
 
+/* Admin MVP tool surfaces */
+.tool-panel {
+  background: var(--bg-secondary);
+  border: 1px solid #1e1e2e;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.inline-error {
+  color: var(--error);
+  font-size: 13px;
+}
+.query-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) 100px;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.admin-textarea {
+  min-height: 96px;
+  line-height: 1.5;
+}
+.answer-block,
+.file-preview-text {
+  background: var(--bg-primary);
+  border: 1px solid #1a1a2a;
+  border-radius: 6px;
+  padding: 14px;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 560px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.result-list { display: flex; flex-direction: column; gap: 10px; }
+.result-row {
+  border: 1px solid #1a1a2a;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  padding: 12px;
+}
+.result-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.result-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.result-snippet {
+  margin-top: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.files-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(260px, 1fr) auto auto;
+  gap: 12px;
+  align-items: end;
+}
+.files-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+.files-list,
+.files-preview {
+  min-width: 0;
+}
+.file-name {
+  cursor: pointer;
+  font-weight: 500;
+}
+.file-name:hover {
+  color: var(--accent);
+}
+.selected-row td {
+  background: rgba(59,130,246,0.12);
+}
+.table-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+}
+.table-link:hover {
+  text-decoration: underline;
+}
+.file-preview-image {
+  max-width: 100%;
+  max-height: 520px;
+  border-radius: 6px;
+  border: 1px solid #1a1a2a;
+  background: var(--bg-primary);
+}
+
 /* Checkbox */
 .checkbox-group { display: flex; gap: 16px; flex-wrap: wrap; }
 .checkbox-label {
@@ -356,4 +480,9 @@ label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; }
   .main { padding: 16px; }
   .metrics { flex-wrap: wrap; }
   .drawer { width: 100%; }
+  .query-grid,
+  .files-toolbar,
+  .files-layout {
+    grid-template-columns: 1fr;
+  }
 }

@@ -32,6 +32,7 @@ import { summarizeMcpParams, dispatchToolCall } from '../mcp/dispatch.ts';
 import { paramDefToSchema } from '../mcp/tool-defs.ts';
 import { getBrainHotMemoryMeta } from '../core/facts/meta-hook.ts';
 import { loadConfig } from '../core/config.ts';
+import { registerAdminMvpRoutes } from './admin-mvp.ts';
 import { buildError, serializeError } from '../core/errors.ts';
 import { VERSION } from '../version.ts';
 import * as db from '../core/db.ts';
@@ -912,6 +913,8 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
   // ---------------------------------------------------------------------------
   // Admin API endpoints
   // ---------------------------------------------------------------------------
+
+  registerAdminMvpRoutes(app, { engine, requireAdmin, config });
 
   // Sign-out-everywhere: nuke ALL active admin sessions in-memory. Every
   // browser/tab fails its next request, gets 401, redirects to login.
