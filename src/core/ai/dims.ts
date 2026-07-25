@@ -220,6 +220,16 @@ export function dimsProviderOptions(
       if (modelId === 'text-embedding-v3' || modelId === 'embedding-3') {
         return { openaiCompatible: { dimensions: dims } };
       }
+      // Qwen3 embedding models exposed through OpenAI-compatible gateways
+      // (e.g. SiliconFlow) also accept the standard `dimensions` field.
+      // Without threading it through, the provider returns the native width
+      // (4096 for 8B, 2560 for 4B) and 1536-dim brains fail at first embed.
+      // Keep this family-specific rather than blanket-enabling `dimensions`
+      // for all openai-compatible models, because many providers still reject
+      // unknown fields and we want fail-loud compatibility.
+      if (/^Qwen\/Qwen3-Embedding-(?:8B|4B)$/i.test(modelId)) {
+        return { openaiCompatible: { dimensions: dims } };
+      }
       // MiniMax embo-01 takes a `type: 'db' | 'query'` field for asymmetric
       // retrieval. Today still hardcoded to 'db' for back-compat — opting
       // into the new inputType seam is a follow-up (see plan's deferred

@@ -185,6 +185,13 @@ describe('dims.dimsProviderOptions', () => {
     expect(opts).toBeUndefined();
   });
 
+  test('Qwen3 embedding models on openai-compatible gateways return dimensions', () => {
+    expect(dimsProviderOptions('openai-compatible', 'Qwen/Qwen3-Embedding-8B', 1536))
+      .toEqual({ openaiCompatible: { dimensions: 1536 } });
+    expect(dimsProviderOptions('openai-compatible', 'Qwen/Qwen3-Embedding-4B', 1536))
+      .toEqual({ openaiCompatible: { dimensions: 1536 } });
+  });
+
   // Negative regression pin: voyage-4-nano is an open-weight variant that
   // Voyage's hosted API rejects `output_dimension` on (fixed 1024-dim).
   // Don't re-add it to VOYAGE_OUTPUT_DIMENSION_MODELS without cross-checking
